@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Obsidian Roll & Spin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            obsidian: '#0B0C10',
+            darkgray: '#1F2833',
+            lightgray: '#C5C6C7',
+            bloodred: '#C5001A',
+            bloodred_hover: '#990013',
+            neonpurple: '#b026ff',
+            neonpurple_hover: '#8e1ecc',
+            warningyellow: '#ffea00',
+            warningyellow_hover: '#ccbb00',
+            terminalcyan: '#00ffff',
+            terminalcyan_hover: '#00cccc'
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="styles.css">
+  
+  <!-- Firebase Scripts for Realtime Multiplayer -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+</head>
+<body class="bg-obsidian text-lightgray font-sans min-h-screen flex flex-col">
+  <!-- Login Modal -->
+  <div id="login-modal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-50">
+    <div class="bg-darkgray p-8 rounded-lg border border-bloodred w-full max-w-md shadow-[0_0_20px_rgba(197,0,26,0.3)] mx-4">
+      <h2 class="text-3xl font-bold text-bloodred mb-2 text-center">Enter the Void</h2>
+      <p class="text-sm text-gray-400 text-center mb-6">Provide your Piggy ID to proceed</p>
+      <input type="text" id="piggy-id-input" placeholder="Piggy ID" class="w-full bg-obsidian border border-bloodred/50 rounded p-3 text-lightgray mb-6 focus:outline-none focus:ring-2 focus:ring-bloodred text-center font-bold tracking-widest uppercase">
+      <button id="login-btn" class="w-full bg-bloodred hover:bg-bloodred_hover text-white font-bold py-3 px-4 rounded transition-colors shadow-lg shadow-bloodred/20 uppercase tracking-wider">Enter</button>
+    </div>
+  </div>
+
+  <!-- Header Nav -->
+  <header class="bg-darkgray border-b border-gray-800 p-4 flex flex-col md:flex-row justify-between items-center gap-4 hidden" id="main-header">
+    <div class="text-xl font-bold text-white flex items-center gap-2">
+      <span class="w-3 h-3 rounded-full bg-white animate-pulse"></span>
+      <span id="current-user-display" class="tracking-wide flex items-center"></span>
+    </div>
+    <nav class="flex gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 scrollbar-hide" id="main-nav">
+      <button class="nav-btn" data-target="wheel-view">Wheel</button>
+      <button class="nav-btn" data-target="dice-view">Dice</button>
+      <button class="nav-btn" data-target="exposure-view">Exposure</button>
+      <button class="nav-btn" data-target="trainer-view">Trainer</button>
+    </nav>
+    <button id="logout-btn" class="text-xs text-gray-500 hover:text-white uppercase tracking-wider transition-colors">Switch ID</button>
+  </header>
+
+  <!-- Main Content -->
+  <main id="main-content" class="flex-1 p-4 md:p-8 hidden max-w-6xl mx-auto w-full">
+    
+    <!-- Firebase Warning Banner -->
+    <div id="firebase-warning" class="hidden bg-warningyellow/10 border border-warningyellow text-warningyellow p-4 rounded-xl mb-6 flex justify-between items-center shadow-[0_0_15px_rgba(255,234,0,0.1)]">
+      <div>
+        <strong class="uppercase font-black text-white">⚠️ Multiplayer Offline:</strong><br>
+        <span class="text-sm">Realtime Firebase sync is not configured. Falling back to local device storage. Add your Firebase config to main.js to sync the Trainer board across all players instantly!</span>
+      </div>
+      <button onclick="this.parentElement.remove()" class="text-warningyellow hover:text-white text-2xl px-2">✕</button>
+    </div>
+
+    <!-- WHEEL VIEW (Bloodred Theme) -->
+    <div id="wheel-view" class="view-section active flex flex-col items-center">
+      <div class="flex flex-col md:flex-row gap-12 w-full justify-center items-start">
+        
+        <!-- Wheel Area -->
+        <div class="flex-1 flex flex-col items-center relative order-1 md:order-2 w-full max-w-md">
+          <div class="relative w-[300px] h-[300px] sm:w-[400px] sm:h-[400px] flex-shrink-0">
+            <canvas id="wheel-canvas" width="400" height="400" class="w-full h-full rounded-full border-4 border-bloodred shadow-[0_0_30px_rgba(197,0,26,0.3)]"></canvas>
+            <!-- Pointer -->
+            <div class="absolute top-0 left-1/2 -translate-x-1/2 -mt-4 w-0 h-0 border-l-[15px] border-l-transparent border-r-[15px] border-r-transparent border-t-[30px] border-t-white z-10 drop-shadow-[0_2px_5px_rgba(0,0,0,0.5)]"></div>
+          </div>
+          
+          <!-- Master Spin Controls -->
+          <div class="mt-10 flex flex-col w-full gap-4 px-4 sm:px-0">
+            <button id="ai-spin-btn" class="bg-bloodred hover:bg-bloodred_hover text-white font-black py-4 px-8 rounded-full text-xl shadow-[0_0_20px_rgba(197,0,26,0.6)] transition-all transform hover:scale-105 uppercase tracking-widest flex justify-center items-center gap-3 disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed">
+              <span class="animate-pulse">🤖</span> CRAIG (AI)
+            </button>
+            <button id="manual-spin-btn" class="bg-transparent border-2 border-bloodred text-bloodred hover:bg-bloodred hover:text-white font-bold py-3 px-8 rounded-full text-lg transition-all uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed">
+              Manual Spin
+            </button>
+          </div>
+
+          <div id="wheel-result" class="mt-6 text-2xl font-bold text-white h-8 text-center px-4 w-full break-words"></div>
+        </div>
+
+        <!-- Right Sidebar Area -->
+        <div class="w-full md:w-80 flex flex-col gap-6 order-2 md:order-1 flex-shrink-0">
+          
+          <!-- Static Wheel Display -->
+          <div class="bg-darkgray p-6 rounded-xl border border-bloodred/30 shadow-xl">
+            <h3 class="text-xl font-black mb-4 text-bloodred uppercase tracking-wider">Current Wheel</h3>
+            <ul id="static-wheel-list" class="space-y-2 text-sm text-lightgray font-medium max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+              <!-- Populated by JS -->
+            </ul>
+          </div>
+
+          <!-- Advanced Ad (Hidden for Admin) -->
+          <div id="premium-ad" class="bg-obsidian p-6 rounded-xl border-2 border-warningyellow border-dashed shadow-[0_0_20px_rgba(255,234,0,0.1)] relative overflow-hidden group hover:border-solid transition-all duration-300">
+            <div class="absolute top-0 right-0 bg-warningyellow text-black text-[10px] font-black px-3 py-1 uppercase tracking-widest rounded-bl-lg">Premium</div>
+            <h3 class="text-xl font-black mb-2 text-warningyellow uppercase mt-2">Advanced Wheel</h3>
+            <p class="text-sm text-gray-400 mb-6 leading-relaxed">Unlock the ability to edit entries, add hardcore modifiers, and access private master controls.</p>
+            <a href="https://paypal.com/toochikey" target="_blank" rel="noopener noreferrer" class="flex justify-center items-center gap-2 w-full bg-warningyellow hover:bg-warningyellow_hover text-black font-black py-3 px-4 rounded transition-colors uppercase tracking-wider shadow-[0_0_15px_rgba(255,234,0,0.3)]">
+              Unlock - $9.99
+            </a>
+          </div>
+
+          <!-- Admin Wheel Editor (Hidden for Normal Users) -->
+          <div id="admin-wheel-editor" class="hidden bg-darkgray p-6 rounded-xl border-2 border-bloodred shadow-[0_0_20px_rgba(197,0,26,0.3)] relative overflow-hidden">
+            <div class="absolute top-0 right-0 bg-bloodred text-white text-[10px] font-black px-3 py-1 uppercase tracking-widest rounded-bl-lg flex items-center gap-1">
+              <span>👑</span> Master Control
+            </div>
+            <h3 class="text-xl font-black mb-4 text-bloodred uppercase mt-2">Edit Wheel</h3>
+            <ul id="admin-wheel-list" class="space-y-2 text-sm text-lightgray font-medium mb-4 max-h-40 overflow-y-auto custom-scrollbar pr-2">
+              <!-- Populated by JS -->
+            </ul>
+            <div class="flex gap-2">
+              <input type="text" id="admin-wheel-input" class="w-full bg-obsidian border border-bloodred/50 rounded p-2 text-lightgray focus:outline-none focus:ring-1 focus:ring-bloodred" placeholder="New task...">
+              <button id="admin-wheel-add-btn" class="bg-bloodred hover:bg-bloodred_hover text-white font-bold px-4 rounded transition-colors">+</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- DICE VIEW (Neon Purple Theme) -->
+    <div id="dice-view" class="view-section hidden flex flex-col items-center justify-center min-h-[60vh]">
+      <div class="flex flex-col items-center justify-center p-10 bg-darkgray rounded-2xl border border-neonpurple/30 w-full max-w-md shadow-[0_0_30px_rgba(176,38,255,0.2)] relative overflow-hidden">
+        
+        <!-- Decorative bg glow -->
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-neonpurple/10 rounded-full blur-3xl z-0 pointer-events-none"></div>
+
+        <div class="z-10 flex flex-col items-center w-full">
+          <div id="dice-container" class="w-32 h-32 bg-obsidian border-4 border-neonpurple rounded-3xl flex items-center justify-center text-7xl font-black text-white shadow-[inset_0_0_20px_rgba(176,38,255,0.3),_0_0_20px_rgba(176,38,255,0.5)] transition-transform duration-500 mb-10 select-none">
+            ?
+          </div>
+          <button id="roll-dice-btn" class="bg-neonpurple hover:bg-neonpurple_hover text-white font-black py-4 px-12 rounded-full text-xl shadow-[0_0_20px_rgba(176,38,255,0.4)] transition-all transform hover:scale-105 w-full uppercase tracking-widest disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed">
+            ROLL DICE
+          </button>
+          
+          <div id="dice-result-container" class="mt-8 w-full text-center hidden">
+            <p class="text-gray-400 font-medium mb-3 uppercase tracking-wider text-sm">Outcome: <span id="dice-number" class="text-3xl font-black text-neonpurple ml-2 drop-shadow-md"></span></p>
+            <div id="dice-task-box" class="bg-obsidian border-l-4 border-neonpurple p-5 rounded-r-lg shadow-inner mt-4 relative">
+              <span class="absolute -top-3 left-4 bg-darkgray text-neonpurple text-xs font-bold px-2 py-1 rounded border border-neonpurple/30 uppercase">Trainer CRAIG</span>
+              <p id="dice-task-text" class="text-lightgray font-medium min-h-[60px] flex items-center justify-center italic text-lg text-center mt-2">Connecting to Trainer CRAIG...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXPOSURE VIEW (Warning Yellow Theme) -->
+    <div id="exposure-view" class="view-section hidden flex flex-col items-center w-full max-w-5xl mx-auto">
+      <div class="flex flex-col sm:flex-row justify-between items-center w-full mb-8 gap-4 bg-darkgray p-6 rounded-xl border border-warningyellow/30 shadow-[0_0_20px_rgba(255,234,0,0.1)]">
+        <div>
+          <h2 class="text-2xl font-black text-warningyellow uppercase tracking-wide">Exposure Feed</h2>
+          <p class="text-sm text-gray-400 mt-1">Posts auto-destruct in 1 hour.</p>
+        </div>
+        <label class="bg-warningyellow hover:bg-warningyellow_hover text-black font-black py-3 px-8 rounded-lg cursor-pointer transition-all transform hover:scale-105 shadow-[0_0_15px_rgba(255,234,0,0.4)] uppercase tracking-wider flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" /></svg>
+          Upload Photo
+          <input type="file" id="exposure-upload" class="hidden" accept="image/*">
+        </label>
+      </div>
+      
+      <div id="exposure-gallery" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 w-full">
+        <!-- Images populated here -->
+      </div>
+    </div>
+
+    <!-- TRAINER VIEW (Terminal Cyan Theme) -->
+    <div id="trainer-view" class="view-section hidden flex flex-col w-full font-mono">
+      <div class="bg-darkgray p-6 rounded-xl border border-terminalcyan/30 shadow-[0_0_20px_rgba(0,255,255,0.1)] mb-8 text-center md:text-left flex justify-between items-center">
+        <div>
+          <h2 class="text-2xl font-black text-terminalcyan uppercase tracking-wide">>_ Trainer_Board</h2>
+          <p class="text-sm text-terminalcyan/60 mt-1">SYS.MONITOR.ALL_PLAYERS</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button id="admin-clear-logs-btn" onclick="clearLogs()" class="hidden text-bloodred hover:text-white transition-colors p-2 rounded hover:bg-bloodred/20 border border-bloodred/30 text-xs font-bold uppercase tracking-widest shadow-[0_0_10px_rgba(197,0,26,0.2)]">
+            Clear Logs
+          </button>
+          <button id="refresh-trainer-btn" class="text-terminalcyan/50 hover:text-terminalcyan transition-colors p-2 rounded hover:bg-obsidian border border-transparent hover:border-terminalcyan/30">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+          </button>
+        </div>
+      </div>
+      
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <!-- Spins Log -->
+        <div class="bg-obsidian rounded-xl border border-terminalcyan/30 p-6 shadow-xl flex flex-col h-[500px]">
+          <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2 uppercase tracking-wide">
+            <span class="w-3 h-3 bg-terminalcyan rounded-full animate-pulse shadow-[0_0_10px_#00ffff]"></span> 
+            WHEEL.LOGS
+          </h3>
+          <div class="flex-1 overflow-y-auto custom-scrollbar-cyan pr-2">
+            <ul id="trainer-spins-list" class="space-y-3">
+              <!-- Populated -->
+            </ul>
+          </div>
+        </div>
+        
+        <!-- Rolls Log -->
+        <div class="bg-obsidian rounded-xl border border-terminalcyan/30 p-6 shadow-xl flex flex-col h-[500px]">
+          <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2 uppercase tracking-wide">
+            <span class="w-3 h-3 bg-terminalcyan rounded-full animate-pulse shadow-[0_0_10px_#00ffff]"></span> 
+            DICE.TASKS.LOGS
+          </h3>
+          <div class="flex-1 overflow-y-auto custom-scrollbar-cyan pr-2">
+            <ul id="trainer-rolls-list" class="space-y-4">
+              <!-- Populated -->
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Fullscreen Image Modal for Exposures -->
+  <div id="image-modal" class="fixed inset-0 bg-black/95 hidden items-center justify-center z-[60] p-4 cursor-zoom-out" onclick="this.classList.replace('flex','hidden')">
+    <img id="fullscreen-image" class="max-w-full max-h-full object-contain rounded-lg border border-warningyellow/50 shadow-[0_0_30px_rgba(255,234,0,0.2)]">
+  </div>
+
+  <!-- Toast Container for Save Confirmations -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-[70] flex flex-col gap-2 pointer-events-none"></div>
+
+  <script src="https://miniapps.ai/sdk/miniapps-ai-v1.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
